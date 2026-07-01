@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  nama      String
+  role      String   @default("karyawan") // admin, manager, karyawan
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  karyawan    Karyawan?
+  cutiAproval CutiApproval[]
+  absensi     Absensi[]
+}
+
+model Departemen {
+  id          Int      @id @default(autoincrement())
+  nama        String   @unique
+  deskripsi   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jabatan     Jabatan[]
+  karyawan    Karyawan[]
+}
+
+model Jabatan {
+  id          Int      @id @default(autoincrement())
+  nama        String
+  departemenId Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  departemen  Departemen @relation(fields: [departemenId], references: [id], onDelete: Cascade)
+  karyawan    Karyawan[]
+
+  @@unique([nama, departemenId])
+}
+
+model Karyawan {
+  id            Int      @id @default(autoincrement())
+  userId        Int?     @unique
+  nik           String   @unique // Nomor Induk Karyawan
+  nama          String
+  email         String?  @unique
+  telepon       String?
+  alamat        String?
+  tempatLahir   String?
+  tanggalLahir  DateTime?
+  jenisKelamin  String?  // L, P
+  agama         String?
+  statusNikah   String?  // single, menikah, duda, janda
+  jumlahTanggungan Int @default(0) // TK/0, TK/1, etc for PPh 21
+  departemenId  Int
+  jabatanId     Int
+  tanggalMasuk  DateTime @default(now())
+  tanggalKeluar DateTime?
+  status        String   @default("aktif") // aktif, nonaktif, resign
+  bank          String?
+  noRekening    String?
+  npwp          String?
+  bpjsKesehatan String?
+  bpjsKetenagakerjaan String?
+  gajiPokok     Float    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  departemen    Departemen  @relation(fields: [departemenId], references: [id])
+  jabatan       Jabatan     @relation(fields: [jabatanId], references: [id], onDelete: Restrict)
+  absensi       Absensi[]
+  cuti          Cuti[]
+  tunjangan     TunjanganKaryawan[]
+  payroll       Payroll[]
+
+  @@index([departemenId])
+  @@index([jabatanId])
+}
+
+model Tunjangan {
+  id          Int      @id @default(autoincrement())
+  nama        String   @unique
+  jenis       String   // tetap, tidak_tetap
+  jumlah      Float
+  keterangan  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  karyawan    TunjanganKaryawan[]
+}
+
+model TunjanganKaryawan {
+  id           Int @id @default(autoincrement())
+  karyawanId   Int
+  tunjanganId  Int
+  jumlah       Float
+
+  karyawan     Karyawan  @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  tunjangan    Tunjangan @relation(fields: [tunjanganId], references: [id], onDelete: Cascade)
+
+  @@unique([karyawanId, tunjanganId])
+}
+
+model Absensi {
+  id          Int      @id @default(autoincrement())
+  karyawanId  Int
+  tanggal     DateTime @default(now())
+  checkIn     DateTime?
+  checkOut    DateTime?
+  status      String   @default("hadir") // hadir, izin, sakit, cuti, alpha
+  keterangan  String?
+  createdAt   DateTime @default(now())
+
+  karyawan    Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id])
+  userId      Int?
+
+  @@unique([karyawanId, tanggal])
+  @@index([karyawanId])
+  @@index([tanggal])
+}
+
+model Cuti {
+  id            Int      @id @default(autoincrement())
+  karyawanId    Int
+  jenis         String   // tahunan, sakit, melahirkan, pernikahan, dll
+  tanggalMulai  DateTime
+  tanggalSelesai DateTime
+  alasan        String
+  status        String   @default("menunggu") // menunggu, disetujui, ditolak
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  karyawan      Karyawan        @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  approvals     CutiApproval[]
+
+  @@index([karyawanId])
+}
+
+model CutiApproval {
+  id        Int      @id @default(autoincrement())
+  cutiId    Int
+  userId    Int
+  tingkat   Int      // 1=manager, 2=hrd, 3=directur
+  status    String   @default("menunggu") // menunggu, disetujui, ditolak
+  catatan   String?
+  createdAt DateTime @default(now())
+
+  cuti      Cuti     @relation(fields: [cutiId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([cutiId, tingkat])
+}
+
+// ─── CONFIG ───
+model SettingPayroll {
+  id       Int    @id @default(autoincrement())
+  key      String @unique
+  value    String
+  label    String?
+}
+
+model KomponenGaji {
+  id           Int    @id @default(autoincrement())
+  nama         String @unique
+  jenis        String // penerimaan, potongan
+  isPersentase Boolean @default(false)
+  nilai        Float  @default(0)
+  keterangan   String?
+  aktif        Boolean @default(true)
+}
+
+// ─── PAYROLL ───
+model Payroll {
+  id              Int      @id @default(autoincrement())
+  karyawanId      Int
+  periodeBulan    Int      // 1-12
+  periodeTahun    Int
+  gajiPokok       Float    @default(0)
+  totalTunjangan  Float    @default(0)
+  totalLembur     Float    @default(0)
+  totalPotongan   Float    @default(0)
+  bpjsKesehatan   Float    @default(0) // potongan
+  bpjsKetenagakerjaan Float @default(0) // potongan
+  pph21           Float    @default(0)
+  thr             Float    @default(0)
+  pinjaman        Float    @default(0)
+  totalPenerimaan Float    @default(0)
+  totalPengurangan Float   @default(0)
+  gajiBersih      Float    @default(0)
+  status          String   @default("draft") // draft, dikonfirmasi, dibayar
+  slipGaji        String?  // path to PDF
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  karyawan        Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  detail          PayrollDetail[]
+
+  @@unique([karyawanId, periodeBulan, periodeTahun])
+  @@index([periodeTahun, periodeBulan])
+}
+
+model PayrollDetail {
+  id          Int      @id @default(autoincrement())
+  payrollId   Int
+  komponen    String
+  jenis       String   // penerimaan, potongan
+  jumlah      Float
+
+  payroll     Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+}
+
+// ─── LOG ───
+model LogAktivitas {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  aksi      String   // create, update, delete, login, dll
+  entity    String?  // Karyawan, Payroll, etc
+  entityId  Int?
+  detail    String?
+  ip        String?
+  createdAt DateTime @default(now())
+}
