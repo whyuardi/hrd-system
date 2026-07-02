@@ -11,16 +11,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials: Record<string, string> | undefined) {
-        if (!credentials?.email || !credentials?.password) return null
+      async authorize(credentials: Partial<Record<string, unknown>>) {
+        const email = credentials?.email as string
+        const password = credentials?.password as string
+        if (!email || !password) return null
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+          where: { email },
         })
 
         if (!user || !user.aktif) return null
 
-        const isValid = await bcrypt.compare(credentials.password as string, user.password)
+        const isValid = await bcrypt.compare(password, user.password)
         if (!isValid) return null
 
         return {
@@ -33,17 +35,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, user }: { token: Record<string, any>; user?: any }) {
+    async jwt(params: { token: Record<string, unknown>; user?: Record<string, unknown> }) {
+      const { token, user } = params
       if (user) {
         token.role = user.role
         token.id = user.id
       }
       return token
     },
-    async session({ session, token }: { session: any; token: Record<string, any> }) {
-      if (session.user) {
-        session.user.role = token.role
-        session.user.id = token.id
+    async session(params: { session: Record<string, unknown>; token: Record<string, unknown> }) {
+      const { session, token } = params
+      if (session.user && typeof session.user === "object") {
+        ;(session.user as Record<string, unknown>).role = token.role
+        ;(session.user as Record<string, unknown>).id = token.id
       }
       return session
     },
